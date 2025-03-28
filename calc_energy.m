@@ -69,6 +69,9 @@ function [E] = calc_energy(t,u,i,cfg)
     
     % default resolution of filter being used for frequency dependent gain/phase corrections (must be x^2)
     cfg = def(cfg, 'filter_size', 8192);
+    if abs(rem(log2(cfg.filter_size),1)) > eps
+        error('filter_size must be of size 2^x!');
+    end
     
     % add extra pading needed for filter
     filter_pad = cfg.filter_size;

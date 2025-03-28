@@ -129,9 +129,18 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
     cfg = def(cfg, 'pad_enable', 0);
     cfg = def(cfg, 'pad_init', 0.0);
     cfg = def(cfg, 'pad_post', 0.0);
+    
+    % sampling rate and period
+    fs = cfg.fs;
+    Ts = 1/fs;
+        
+    
        
     % default resolution of filter being used for frequency dependent gain/phase corrections (must be x^2)
     cfg = def(cfg, 'filter_size', 8192);
+    if abs(rem(log2(cfg.filter_size),1)) > eps
+        error('filter_size must be of size 2^x!');
+    end
     
     % default ADC transfers
     cfg = def(cfg, 'adc_enable', 0);
@@ -164,15 +173,80 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
         t_stop = t_start + t_sim;
         t_sim = t_sim + cfg.pad_init + cfg.pad_post;
     end
+
+    % total sample count
+    N = ceil(t_sim*cfg.fs);
     
-    % time vector
+    % select time slice to simulate
+    if isfield(cfg, 'slice_t_start') && isfield(cfg, 'slice_N_start')
+        % not allowed
+        error('Define either ''slice_t_start'' or ''slice_N_start'' or none, not both!');        
+    elseif ~isfield(cfg, 'slice_t_start') && ~isfield(cfg, 'slice_N_start')
+        % no slice start defined: start from beginning
+        cfg.slice_N_start = 0;        
+    elseif isfield(cfg, 'slice_t_start')
+        % get nearest start sample offset
+        cfg.slice_N_start = round(cfg.slice_t_start/Ts);        
+    end        
+    if cfg.slice_N_start < 0 || cfg.slice_N_start >= N
+        error('Simulation slice start is out of valid range!');
+    end
+        
+    if isfield(cfg, 'slice_t_duration') && isfield(cfg, 'slice_N_count')
+        % not allowed
+        error('Define either ''slice_t_duration'' or ''slice_N_count'' or none, not both!');    
+    elseif (~isfield(cfg, 'slice_t_duration') && ~isfield(cfg, 'slice_N_count')) ... 
+            || (isfield(cfg, 'slice_t_duration') && (cfg.slice_t_duration == NaN || cfg.slice_t_duration <= 0)) ... 
+            || (isfield(cfg, 'slice_N_count') && (cfg.slice_N_count == NaN || cfg.slice_N_count <= 0))
+        % none defined: slice till end of simulation
+        cfg.slice_N_count = N - cfg.slice_N_start;
+    elseif isfield(cfg, 'slice_t_duration')
+        % get nearest sample count
+        cfg.slice_N_count = round(cfg.slice_t_duration/Ts);
+    end
+    if (cfg.slice_N_count + cfg.slice_N_start) > N
+        % limit duration/count to valid range (no error)
+        cfg.slice_N_count = N - cfg.slice_N_start;        
+    end
+    if cfg.slice_N_count < 1
+        error('Simulation slice duration is out of valid range!');
+    end      
+    
+    % total filters to be applied
+    has_filters = !!cfg.tr_enable + !!cfg.adc_enable;
+    
+    if has_filters
+        % expand simulation range to cover extra padding needed for the FFT filters
+        
+        % padding size
+        filter_pad_size = cfg.filter_size;
+        filter_pad_time = filter_pad_size*Ts;
+        
+        % expand simulation time range to cover extra padding
+        t_start = t_start + filter_pad_time;
+        t_stop = t_stop + filter_pad_time;
+        t_sim = t_sim + 2*filter_pad_time;
+        
+    else
+        % no FFT filters - no extra padding
+        filter_pad_size = 0;
+        filter_pad_time = 0;
+            
+    end
+        
+    N_start = cfg.slice_N_start;
+    N_count = cfg.slice_N_count + 2*filter_pad_size;
+    
+    % time vector [s]
     t = [];
-    t(:,1) = [0:1/cfg.fs:t_sim-1/cfg.fs];
+    t(:,1) = [N_start:(N_start + N_count - 1)]*Ts;
     
     % generate fund. frequency vector along simulated interval
     w0 = 2*pi*cfg.f_nom;
-    if isfield(cfg,'f_stop') && cfg.f_stop
-        w0 = 2*pi*linspace(cfg.f_nom, cfg.f_stop, numel(t)).';
+    if isfield(cfg,'f_stop') && cfg.f_stop    
+        t_ax = [-1e9; t_start; t_stop; 1e9];
+        w0_ax = 2*pi*[cfg.f_nom; cfg.f_nom; cfg.f_stop; cfg.f_stop];
+        w0 = interp1(t_ax,w0_ax,t,'linear');
     end
     
     % fundamental grid voltage component
@@ -203,7 +277,7 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
     clear wt;
     
     % apply voltage padding
-    u(find(t < t_start | t > t_stop)) = 0.0;
+    u(find(t < t_start | t >= t_stop)) = 0.0;
     
     
     
@@ -252,15 +326,16 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
     end    
     clear i_env;
         
-    % calculate actual simulated energy dose [Ws]
-    p = u.*i;
-    E_sim = mean(p)*t_sim;
-    
     % return unmodified waveforms
-    u_raw = u;
-    i_raw = i;
-      
+    u_raw = u(1+filter_pad_size:end-filter_pad_size);
+    i_raw = i(1+filter_pad_size:end-filter_pad_size);
     
+    % calculate actual simulated energy dose [Ws]
+    p = u_raw.*i_raw;
+    t_sim = cfg.slice_N_count*Ts;
+    E_sim = mean(p)*t_sim;    
+    clear p;
+
     
     
     % --- Apply ADC and transducer models:
@@ -297,7 +372,7 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
                 tf_freq = [tf_freq;chn.tr_tfer.f(:)];
             end
             tf_freq = unique(sort(tf_freq));
-            if min(tf_freq) > 0 || max(tf_freq) < cfg.fs/2
+            if min(tf_freq) > 0 || max(tf_freq) < fs/2
                 error('Frequency vector of ADC and transducer transfers must cover frequency range from 0 to nyquist (cfg.fs/2)!');
             end
             
@@ -326,20 +401,18 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
                 tf_phi = tf_phi + phi;
             end
             
-            % add extra pading needed for filter
-            filter_pad = cfg.filter_size;
-            pad = zeros(filter_pad,1);
-            y_pad = [pad;chn.y;pad];
-            
             % apply filter
-            [y_filt, id_start, id_stop] = td_fft_filter(y_pad, cfg.fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
+            [y_filt, id_start, id_stop] = td_fft_filter(chn.y, cfg.fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
                         
             % get rid of padding residue
-            eval([chn.y_var ' = y_filt((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));']);
+            eval([chn.y_var ' = y_filt((filter_pad_size - id_start + 1):(filter_pad_size - id_start + cfg.slice_N_count));']);                      
                 
-            clear y_pad y_filt;
+            clear y_filt;
         end
-    
+        
+        % remove filter padding from time vector
+        t = t(1+filter_pad_size:end-filter_pad_size) - filter_pad_time;        
+            
     end 
     
     

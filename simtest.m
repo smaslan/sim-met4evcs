@@ -3,7 +3,7 @@
 %
 % This is part of the EVCS charging waveform simulator.
 % Developed in scope of EPM project 23IND06 Met4EVCS: https://www.vsl.nl/en/met4evcs/
-% (c) 2024, Stanislav Maslan (smaslan@cmi.cz)
+% (c) 2024 - 2025, Stanislav Maslan (smaslan@cmi.gov.cz)
 % The script is distributed under MIT license, https://opensource.org/licenses/MIT.
 %====================================================================================================
 clc;
@@ -21,9 +21,17 @@ if isOctave
     graphics_toolkit('qt');
 end
 
+% test mode:
+%  'single' - generate waves in one slice
+%  'slice' - generate waves from sub-slices of defined length
+%  'both' - generate using both methods and compare difference
+test_mode = 'both';
+% slice length in samples count
+slice_test_N_count = 56789;
+
 
 % show debug plots? ('': none, 'plotyy': u,i two axis plot, 'plot': u,i two separate plots, 'subplot': i,u to subplots)
-cfg.dbg_plot = '';
+cfg.dbg_plot = 'plot';
 
 % nominal grid voltage (rms) [V]
 cfg.U_rms = 230.0;
@@ -48,18 +56,41 @@ cfg.pfc_min_f = 2e3;
 cfg.pfc_max_f = 8e3;
 cfg.pfc_spur_amp_rel = 0.01;
 
-% ramp up time for current [s]
-cfg.I_ramp_up_time = 0.2;
-% initial current (rms) [A]
-cfg.I_initial = 0.1;
 % initial current time [s]
 cfg.I_initial_time = 0.1;
+% initial current (rms) [A]
+cfg.I_initial = 1.0;
+% ramp up time for current [s]
+cfg.I_ramp_up_time = 0.2;
 % extra delay between current start from voltage start [s]
 cfg.I_U_delay = 0.1;
 % ramp down time for current [s]
 cfg.I_ramp_down_time = 0.1;
 % end of current to end of voltage delay [s]
 cfg.I_U_end_delay = 0.1;
+
+% simulation time (excluding padding) [s]
+cfg.sim_time = 3.0;
+
+% zero padding before and after simulated waveform [s]
+cfg.pad_enable = 1;
+cfg.pad_init = 0.1;
+cfg.pad_post = 0.1;
+
+
+if ~strcmpi(test_mode,'single')
+    % optional time slice (or sample count slice) of the total simulation time (do not assign to simulate full wave at once):
+    %  note: use either time values or sample count values, not both and not combination of time and samples count
+    %  start of slice [s]
+    %cfg.slice_t_start = 1.0;
+    %  duration of slice [s] 
+    %cfg.slice_t_duration = 2.0;
+    %  first slice sample offset (0-based: 0-start from first sample)
+    %cfg.slice_N_start = 10000;
+    %  samples count for the slice 
+    %cfg.slice_N_count = 10000;
+end  
+
 
 
 % steady state power factor [-]
@@ -69,19 +100,22 @@ cfg.pf = 0.9;
 
 % grid frequency [Hz]
 cfg.f_nom = 50.3;
-% set stop frequency to generate frequency drift along the simulated interval [Hz]
+% set stop frequency to generate frequency drift along the simulated interval [Hz] or leave empty or set to 0 to disable
 cfg.f_stop = 49.9;
 
 % digitizer sampling rate [Hz]
 cfg.fs = 100000.0;
 
-% zero padding before and after simulated waveform [s]
-cfg.pad_enable = 1;
-cfg.pad_init = 0.1;
-cfg.pad_post = 0.1;
 
-% simulation time (excluding padding) [s]
-cfg.sim_time = 6.0;
+
+
+% enable ADC simulation
+cfg.adc_enable = 1;
+% enable transducer simulation
+cfg.tr_enable = 1;
+
+% ADC and transducer model randomization by its uncertainty?
+cfg.rand_model = 0;
 
 % resolution of filter being used for frequency dependent gain/phase corrections (must be x^2)
 cfg.filter_size = 2^16;
@@ -98,7 +132,7 @@ u_adc.cfg.phi_fm = -1e-3;
 u_adc.cfg.u_phi_fm = 50e-6;
 u_adc.cfg.u_phi_min = 2e-6;
 u_adc.cfg.phi_pow = 1.0;
-[cfg.u_adc.f, cfg.u_adc.gain, cfg.u_adc.phi] = gen_adc_tfer(cfg.fs/2, 1000, u_adc.cfg, 0);
+[cfg.u_adc.f, cfg.u_adc.gain, cfg.u_adc.phi] = gen_adc_tfer(cfg.fs/2, 100, u_adc.cfg, 0);
 
 % make some current channel ADC transfer
 i_adc.cfg.dc_gain = 1.02;
@@ -112,7 +146,7 @@ i_adc.cfg.phi_fm = +1e-3;
 i_adc.cfg.u_phi_fm = 50e-6;
 i_adc.cfg.u_phi_min = 2e-6;
 i_adc.cfg.phi_pow = 1.0;
-[cfg.i_adc.f, cfg.i_adc.gain, cfg.i_adc.phi] = gen_adc_tfer(cfg.fs/2, 1000, i_adc.cfg, 0);
+[cfg.i_adc.f, cfg.i_adc.gain, cfg.i_adc.phi] = gen_adc_tfer(cfg.fs/2, 100, i_adc.cfg, 0);
 
 % make some voltage transducer transfer
 cfg.Rhi = 100e3;
@@ -125,7 +159,7 @@ cfg.Clo = 100e-12;
 cfg.u_Clo = 10e-12;
 cfg.Llo = 20e-9;
 cfg.u_Llo = 5e-9;
-[cfg.u_tr.f, cfg.u_tr.gain, cfg.u_tr.phi] = gen_rvd_tfer(50000.0,1000,cfg,0);
+[cfg.u_tr.f, cfg.u_tr.gain, cfg.u_tr.phi] = gen_rvd_tfer(50000.0,100,cfg,0);
 
 % make some current transducer transfer
 cfg.Rs = 0.1;
@@ -134,23 +168,132 @@ cfg.Ls = 50e-9;
 cfg.u_Ls = 5e-9;
 cfg.Cp = 100e-12;
 cfg.u_Cp = 10e-12;
-[cfg.i_tr.f, cfg.i_tr.gain, cfg.i_tr.phi] = gen_shunt_tfer(50000.0,1000,cfg,0);
+[cfg.i_tr.f, cfg.i_tr.gain, cfg.i_tr.phi] = gen_shunt_tfer(50000.0,100,cfg,0);
 
-% enable ADC simulation
-cfg.adc_enable = 1;
 
-% enable transducer simulation
-cfg.tr_enable = 1;
 
-% ADC and transducer model randomization by its uncertainty?
-cfg.rand_model = 0;
+if ~any(strcmpi(test_mode,{'slice','single','both'}))
+    error('Unknown test_mode ''%s''!',test_mode);
+end
 
-% generate waves
-tic
-[t,u,i,E_ref] = sim_evcs(cfg);
-toc
 
-% calculate energy from simulated waveforms
+
+% --- generate waves (entire simulation at once):
+if ~strcmpi(test_mode,'slice')
+    fprintf('Generating wave in single slice...\n');
+    tic
+    [t,u,i,E_ref] = sim_evcs(cfg);
+    toc
+end
+
+
+% --- generate waves using multiple slices:
+if ~strcmpi(test_mode,'single')
+    fprintf('Generating wave using sub-slices of length %d samples...\n',slice_test_N_count);
+    tic
+    % slice length (samples)
+    M = slice_test_N_count;
+    % total sample count
+    N = cfg.sim_time*cfg.fs;
+    % no plots
+    dbg_plot = cfg.dbg_plot;
+    cfg.dbg_plot = '';
+    
+    t_slice = [];
+    u_slice = [];
+    i_slice = [];
+    E_ref_slice = [];
+    n = 0;
+    while n < N
+        %  first slice sample offset (0-based: 0=start from first sample)
+        cfg.slice_N_start = n;
+        %  samples count for the slice 
+        cfg.slice_N_count = M;
+        
+        % generate slice
+        [tx,ux,ix,E_ref_slice(end+1)] = sim_evcs(cfg);
+        
+        % merge slices
+        t_slice = [t_slice; tx];
+        u_slice = [u_slice; ux];
+        i_slice = [i_slice; ix];
+        
+        % next slice
+        n = n + M;
+    end
+    E_ref_slice = sum(E_ref_slice);
+    cfg.dbg_plot = dbg_plot;
+    toc
+    
+    if strcmpi(test_mode,'slice')
+        % use slice output as test result
+        t = t_slice;
+        u = u_slice;
+        i = i_slice;
+        E_ref = E_ref_slice;        
+    
+    elseif strcmpi(test_mode,'both')
+        % compare single and slice modes
+        
+        dev_t_slice = sum(abs(t - t_slice))
+        dev_u_slice = sum(abs(u - u_slice))
+        dev_i_slice = sum(abs(i - i_slice))
+        dev_E_ref = E_ref - E_ref_slice
+                
+        % plot wave differences
+        if strcmp(cfg.dbg_plot,'plotyy')
+            figure;
+            [hax] = plotyy(t,u - u_slice, t,i - i_slice);
+            xlabel(hax(1), 'time [s]');
+            ylabel(hax(1), 'u - u\_slice [V]');
+            ylabel(hax(2), 'i - i\_slice [A]');
+            grid on;
+            box on;
+        
+        elseif strcmp(cfg.dbg_plot,'plot')
+            figure;
+            plot(t, u - u_slice);
+            xlabel('time [s]');
+            ylabel('u - u\_slice [V]');
+            grid on;
+            box on;
+            
+            figure;
+            plot(t, i - i_slice);
+            xlabel('time [s]');
+            ylabel('i - i\_slice [A]');
+            grid on;
+            box on;
+            
+        elseif strcmp(cfg.dbg_plot,'subplot')
+            figure;
+            subplot(2,1,1);
+            plot(t, u - u_slice);
+            xlabel('time [s]');
+            ylabel('u - u\_slice [V]');
+            grid on;
+            box on;
+            
+            subplot(2,1,2);        
+            plot(t, i - i_slice);
+            xlabel('time [s]');
+            ylabel('i - i\_slice [A]');
+            grid on;
+            box on;        
+        
+        end
+    end
+    
+    clear t_slice u_slice i_slice; 
+    
+end
+
+
+
+  
+
+% --- calculate energy from simulated waveforms:
+fprintf('Calculating energy of generated waves...\n');
 tic
 [E_meas] = calc_energy(t,u,i,cfg);
 toc
