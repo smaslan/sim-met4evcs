@@ -38,7 +38,9 @@ function [f,qu_gain,qu_phi] = gen_adc_tfer(f_max,f_count, cfg, varargin)
     do_plot = nargin() > 3 && isnumeric(varargin{1}) && varargin{1};
 
     % generate freq. vector
-    f(:,1) = linspace(0,f_max + eps,f_count);
+    f_low = 1000.0;
+    f = [0, logspace(log10(1),log10(min(f_low,f_max)), round(f_count/2)), linspace(min(f_low+1, f_max),f_max + eps,round(f_count/2))].';
+    f = unique(sort(f));
     
     % generate smooth gain tfer   
     gain(:,1) = cfg.dc_gain*(1 + cfg.gain_fm.*(f/max(f)).^cfg.gain_pow);

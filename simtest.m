@@ -22,16 +22,16 @@ if isOctave
 end
 
 % test mode:
-%  'single' - generate waves in one slice
+%  'single' - generate waves in single slice
 %  'slice' - generate waves from sub-slices of defined length
-%  'both' - generate using both methods and compare difference
-test_mode = 'both';
+%  'both' - generate using both methods and compare difference (just for debuf purposes)
+test_mode = 'single';
 % slice length in samples count
 slice_test_N_count = 56789;
 
 
 % show debug plots? ('': none, 'plotyy': u,i two axis plot, 'plot': u,i two separate plots, 'subplot': i,u to subplots)
-cfg.dbg_plot = 'plot';
+cfg.dbg_plot = '';
 
 % nominal grid voltage (rms) [V]
 cfg.U_rms = 230.0;
@@ -50,6 +50,7 @@ cfg.I_thd = 10.0;
 cfg.I_thd_mode = 'exp';
 
 % PFC spurs simulator
+cfg.pfc_enable = 0;
 cfg.pfc_max_h_f = 500e3;
 cfg.pfc_max_h = 5;
 cfg.pfc_min_f = 2e3;
@@ -77,8 +78,29 @@ cfg.pad_enable = 1;
 cfg.pad_init = 0.1;
 cfg.pad_post = 0.1;
 
+% --- supra hamonics stuff:
+% state
+cfg.supra_enable = 0;
+% lower freq limit [Hz]
+cfg.supra_fmin = 1.5e3;
+% upper freq limit [Hz]
+cfg.supra_fmax = 150e3;
+% optional generation of supraharmonics per slices (each slice will have individualy randomized frequencies/amplitudes to simulate spread spectrum/fluctuating spur)
+%  define either samples count or time, or nothing to generate in one slice for entire simulation 
+%cfg.supra_slice_N = 12345;
+cfg.supra_slice_t = 0.1;
+% optional generation of multiple spurs per time slice (alternative to generation by slices), default = 1
+cfg.supra_multi_spur = 10;
+% voltage emisions model path 
+cfg.supra_model = fullfile(mpth, 'data', 'EV2_H2-Syn_model.mat');
+% grid impedance estimate (for calculation of current spectrum): (Rs + Ls) || Cp  
+cfg.supra_imp_Rs = 0.1;
+cfg.supra_imp_Ls = 1e-6;
+cfg.supra_imp_Cp = 1e-6;
 
-if ~strcmpi(test_mode,'single')
+
+
+if strcmpi(test_mode,'single')
     % optional time slice (or sample count slice) of the total simulation time (do not assign to simulate full wave at once):
     %  note: use either time values or sample count values, not both and not combination of time and samples count
     %  start of slice [s]
@@ -94,7 +116,7 @@ end
 
 
 % steady state power factor [-]
-cfg.pf = 0.9;
+cfg.pf = 0.95;
 % or alternatively current phase shift [deg]
 %cfg.I_phi = 0;
 
@@ -104,15 +126,15 @@ cfg.f_nom = 50.3;
 cfg.f_stop = 49.9;
 
 % digitizer sampling rate [Hz]
-cfg.fs = 100000.0;
+cfg.fs = 200000.0;
 
 
 
 
 % enable ADC simulation
-cfg.adc_enable = 1;
+cfg.adc_enable = 0;
 % enable transducer simulation
-cfg.tr_enable = 1;
+cfg.tr_enable = 0;
 
 % ADC and transducer model randomization by its uncertainty?
 cfg.rand_model = 0;
@@ -159,7 +181,7 @@ cfg.Clo = 100e-12;
 cfg.u_Clo = 10e-12;
 cfg.Llo = 20e-9;
 cfg.u_Llo = 5e-9;
-[cfg.u_tr.f, cfg.u_tr.gain, cfg.u_tr.phi] = gen_rvd_tfer(50000.0,100,cfg,0);
+[cfg.u_tr.f, cfg.u_tr.gain, cfg.u_tr.phi] = gen_rvd_tfer(cfg.fs/2,100,cfg,0);
 
 % make some current transducer transfer
 cfg.Rs = 0.1;
@@ -168,7 +190,7 @@ cfg.Ls = 50e-9;
 cfg.u_Ls = 5e-9;
 cfg.Cp = 100e-12;
 cfg.u_Cp = 10e-12;
-[cfg.i_tr.f, cfg.i_tr.gain, cfg.i_tr.phi] = gen_shunt_tfer(50000.0,100,cfg,0);
+[cfg.i_tr.f, cfg.i_tr.gain, cfg.i_tr.phi] = gen_shunt_tfer(cfg.fs/2,100,cfg,0);
 
 
 
@@ -194,7 +216,7 @@ if ~strcmpi(test_mode,'single')
     % slice length (samples)
     M = slice_test_N_count;
     % total sample count
-    N = cfg.sim_time*cfg.fs;
+    N = (cfg.pad_enable*(cfg.pad_init + cfg.pad_post) + cfg.sim_time)*cfg.fs;    
     % no plots
     dbg_plot = cfg.dbg_plot;
     cfg.dbg_plot = '';
@@ -212,7 +234,7 @@ if ~strcmpi(test_mode,'single')
         
         % generate slice
         [tx,ux,ix,E_ref_slice(end+1)] = sim_evcs(cfg);
-        
+                
         % merge slices
         t_slice = [t_slice; tx];
         u_slice = [u_slice; ux];
@@ -238,7 +260,7 @@ if ~strcmpi(test_mode,'single')
         dev_t_slice = sum(abs(t - t_slice))
         dev_u_slice = sum(abs(u - u_slice))
         dev_i_slice = sum(abs(i - i_slice))
-        dev_E_ref = E_ref - E_ref_slice
+        dev_E_ref = (E_ref - E_ref_slice)/3600
                 
         % plot wave differences
         if strcmp(cfg.dbg_plot,'plotyy')

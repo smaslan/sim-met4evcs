@@ -119,7 +119,7 @@ spur_ufx = 0.5*spur_filt_bw;
 model.source_file = spect_file;
 model.noise_f = amp_med_max_f;
 model.noise_a_max = amp_med_max;
-model.noise_a_min = amp_med_max;
+model.noise_a_min = amp_med_min;
 model.noise_a_med = interp1(amp_med_f,amp_med, amp_med_max_f, 'linear', 'extrap');
 model.spur_f = spur_fx;
 model.spur_uf = spur_ufx;
@@ -174,7 +174,7 @@ noise_std = (noise_max - noise_amp);
 amp_sim = f_mask.*max(noise_amp + noise_std.*2.*(rand(size(noise_f)) - 0.5),noise_min);
 
 % optional multiple spurs to simulate spread spectrum
-multi_spur = 1;
+multi_spur = 10;
 % now generate spurs with randomized frequencies corresponding to analysis freq resolution
 for k = 1:multi_spur
     spur_bin = round(rand2(size(spur_fx),spur_fx,spur_ufx)/f_step);
