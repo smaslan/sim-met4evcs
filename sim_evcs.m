@@ -98,6 +98,31 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
     % show debug plots? ('': none, 'plotyy': u,i two axis plot, 'plot': u,i two separate plots, 'subplot': i,u to subplots)
     cfg = def(cfg, 'dbg_plot', '');
     
+    % by default single phase
+    cfg = def(cfg, 'phase_N', 1);
+    
+    % default phase step
+    if ~isfield(cfg, 'U_phi')
+        cfg.U_phi = [0:cfg.phase_N-1]*360/cfg.phase_N;
+    end
+    if numel(cfg.U_phi) < cfg.phase_N
+        error('cfg.U_phi elements count does not match cfg.phase_N!');
+    end
+    
+    if numel(cfg.U_rms) > 1 && numel(cfg.U_rms) < cfg.phase_N
+        error('cfg.U_rms must be scalar or must match cfg.phase_N count!');
+    end
+    if numel(cfg.U_rms) == 1
+        cfg.U_rms = repmat(cfg.U_rms, [1 cfg.phase_N]);
+    end
+     
+    if numel(cfg.I_rms) > 1 && numel(cfg.I_rms) < cfg.phase_N
+        error('cfg.I_rms must be scalar or must match cfg.phase_N count!');
+    end
+    if numel(cfg.I_rms) == 1
+        cfg.I_rms = repmat(cfg.I_rms, [1 cfg.phase_N]);
+    end
+    
     cfg = def(cfg, 'U_thd_mode', '');
     if ~isempty(cfg.U_thd_mode)
         check_str(cfg, {'U_thd_harms', 'U_thd'});        
@@ -128,10 +153,15 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
 
     end
     
+    % randomize system model by uncertainty?
+    cfg = def(cfg, 'rand_model', 0);
+    cfg.rand_model = ~~cfg.rand_model;      
+    
+    % default ADC/transducer transfer interpolation mode
+    cfg = def(cfg, 'tfer_interp', 'pchip');
     
     % default phase angle
-    cfg = def(cfg, 'U_phi', 0);
-    U_phi = cfg.U_phi*180.0/pi;
+    U_phi = cfg.U_phi/180.0*pi;
     
     % default current ramps
     cfg = def(cfg, 'I_ramp_up_time', 0.0);
@@ -270,197 +300,210 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
     t = [];
     t(:,1) = [N_start:(N_start + N_count - 1)]*Ts;
     
-    % generate fund. frequency vector along simulated interval
-    w0 = 2*pi*cfg.f_nom;
-    if isfield(cfg,'f_stop') && cfg.f_stop && ~isnan(cfg.f_stop)    
-        t_ax = [-1e9; t_start; t_stop; 1e9];
-        w0_ax = 2*pi*[cfg.f_nom; cfg.f_nom; cfg.f_stop; cfg.f_stop];
-        w0 = interp1(t_ax,w0_ax,t,'linear');
-    end
-    
-    % fundamental grid voltage component
-    A = cfg.U_rms*2^0.5;
-    
-    % generate grid voltage harmonics 
-    [f_uh, A_uh, ph_uh] = gen_thd_harms(cfg.U_thd, cfg.U_thd_mode, cfg.U_thd_harms);
-    A_uh = A*A_uh;
-    
-    % fix voltage components to match desired rms
-    ku_rms = cfg.U_rms/rms(2^-0.5*[A A_uh]);
-    A = A*ku_rms;
-    A_uh = A_uh*ku_rms;
-    
-    % list of all voltage harmonics
-    f_list = [1 f_uh];
-    A_list = [A A_uh];
-    ph_list = [0 ph_uh] + U_phi;    
-    
-    % generate voltage harmonics (one by one to save memory for large datasets)
-    u = zeros(size(t));
-    for k = 1:numel(f_list)
-        wt = w0.*f_list(k).*(t - t_start);
-        u = u + A_list(k)*sin(wt + ph_list(k));
-    end
-    clear wt;
-                                        
-    % generate supra harmonics stuff
-    if cfg.supra_enable
-        [u_supra, i_supra] = gen_supra(cfg, N_count);
-        u = u + u_supra;
-        clear u_supra;
-    end
     
     
+    % --- For each phase:
+    for phid = 1:cfg.phase_N
     
-    % apply voltage padding
-    u(find(t < t_start | t >= t_stop)) = 0.0;
-    
-    
-    
-    % make current envelope
-    t_i_start = t_start + cfg.I_U_delay;
-    t_i_end_initial = t_i_start + cfg.I_initial_time;
-    t_i_end_rampup = t_i_end_initial + cfg.I_ramp_up_time;
-    t_i_end = t_stop - cfg.I_U_end_delay;
-    t_i_end_nom = t_i_end - cfg.I_ramp_down_time;
-    t_i_steps = [0, t_i_start, t_i_start, t_i_end_initial, t_i_end_rampup, t_i_end_nom, t_i_end, t_sim];
-    i_env_steps = [0, 0, cfg.I_initial, cfg.I_initial, cfg.I_rms, cfg.I_rms, 0, 0]/cfg.I_rms;
-    t_i_steps = t_i_steps + eps*[1:numel(t_i_steps)];
-    i_env = interp1(t_i_steps, i_env_steps, t,'linear','extrap');
-    
-    
-    
-    % main current component
-    A = cfg.I_rms*2^0.5;
-     
-     % generate current THD components
-    [f_uh, A_uh, ph_uh] = gen_thd_harms(cfg.I_thd, cfg.I_thd_mode, cfg.I_thd_harms);
-    A_uh = A*A_uh;
-    
-    % fix current components to match desired rms
-    ki_rms = cfg.I_rms/rms(2^-0.5*[A A_uh]);
-    A = A*ki_rms;
-    A_uh = A_uh*ki_rms;
-    
-    % make list of current harmonics
-    f_list = [1 f_uh];
-    A_list = [A A_uh];
-    ph_list = [0 ph_uh] + I_phi;
-    
-    % generate current harmonics (one by one to save memory for large datasets)
-    i = zeros(size(t));
-    for k = 1:numel(f_list)
-        wt = w0.*f_list(k).*(t - t_start);
-        i = i + A_list(k)*sin(wt + ph_list(k)).*i_env;
-    end
-    clear wt;
-    
-    % generate PFC spurs
-    if cfg.pfc_enable
-        ip = gen_pfc_emi(t - t_start, w0.*(t - t_start), cfg.pfc_min_f,cfg.pfc_max_f, cfg.pfc_max_h,cfg.pfc_max_h_f, A.*i_env*cfg.pfc_spur_amp_rel);
-        i = i + ip;
-    end    
-    clear i_env;
-    
-    if exist('i_supra','var')
-        % add supra-harmonics
-        i_supra(t < t_start | t >= t_stop) = 0.0;
-        i = i + i_supra;
-    end
-    
-        
-    % return unmodified waveforms
-    u_raw = u(1+filter_pad_size:end-filter_pad_size);
-    i_raw = i(1+filter_pad_size:end-filter_pad_size);
-    
-    % calculate actual simulated energy dose [Ws]
-    p = u_raw.*i_raw;
-    t_sim = cfg.slice_N_count*Ts;
-    E_sim = mean(p)*t_sim;    
-    clear p;
-
-    
-    
-    % --- Apply ADC and transducer models:
-    
-    % randomize system model by uncertainty?
-    cfg = def(cfg, 'rand_model', 0);
-    cfg.rand_model = ~~cfg.rand_model;      
-    
-    % default ADC/transducer transfer interpolation mode
-    cfg = def(cfg, 'tfer_interp', 'pchip');
-        
-    if cfg.adc_enable || cfg.tr_enable
-    
-        % define channels to process 
-        channels{1}.y = u; % input
-        channels{1}.y_var = 'u'; % output variable
-        channels{1}.adc_tfer = cfg.u_adc; % adc model
-        channels{1}.tr_tfer = cfg.u_tr; % transducer model
-        channels{2}.y = i; % input
-        channels{2}.y_var = 'i'; % output variable
-        channels{2}.adc_tfer = cfg.i_adc; % adc model
-        channels{2}.tr_tfer = cfg.i_tr; % transducer model
-        
-        % for each channel:
-        for k = 1:numel(channels)
-            chn = channels{k};
-        
-            % get combined frequency vector of ADC and transducer correction
-            tf_freq = [];
-            if cfg.adc_enable
-                tf_freq = chn.adc_tfer.f(:);
-            end
-            if cfg.tr_enable
-                tf_freq = [tf_freq;chn.tr_tfer.f(:)];
-            end
-            tf_freq = unique(sort(tf_freq));
-            if min(tf_freq) > 0 || max(tf_freq) < fs/2
-                error('Frequency vector of ADC and transducer transfers must cover frequency range from 0 to nyquist (cfg.fs/2)!');
-            end
-            
-            % combine ADC and transducer transfers:
-            %   note: optional randomization of tfers assuming correlated uncertainty along frequency axis            
-            
-            % ADC transfer
-            tf_gain = ones(size(tf_freq));
-            tf_phi = zeros(size(tf_freq));
-            if cfg.adc_enable
-                freq = chn.adc_tfer.f(:);
-                gain = chn.adc_tfer.gain.v(:) + cfg.rand_model*randn()*chn.adc_tfer.gain.u(:);    
-                phi = chn.adc_tfer.phi.v(:) + cfg.rand_model*randn()*chn.adc_tfer.phi.u(:);            
-                tf_gain = interp1(freq, gain, tf_freq, cfg.tfer_interp, 'extrap');
-                tf_phi = interp1(freq, phi, tf_freq, cfg.tfer_interp, 'extrap');
-            end
-            
-            % transducer transfer
-            if cfg.tr_enable
-                freq = chn.tr_tfer.f(:);
-                gain = chn.tr_tfer.gain.v(:) + cfg.rand_model*randn()*chn.tr_tfer.gain.u(:);    
-                phi = chn.tr_tfer.phi.v(:) + cfg.rand_model*randn()*chn.tr_tfer.phi.u(:);            
-                gain = interp1(freq, gain, tf_freq, cfg.tfer_interp, 'extrap');
-                phi = interp1(freq, phi, tf_freq, cfg.tfer_interp, 'extrap');
-                tf_gain = tf_gain.*gain;
-                tf_phi = tf_phi + phi;
-            end
-            
-            % apply filter
-            [y_filt, id_start, id_stop] = td_fft_filter(chn.y, cfg.fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
-                        
-            % get rid of padding residue
-            eval([chn.y_var ' = y_filt((filter_pad_size - id_start + 1):(filter_pad_size - id_start + cfg.slice_N_count));']);                      
-                
-            clear y_filt;
+        % generate fund. frequency vector along simulated interval
+        w0 = 2*pi*cfg.f_nom;
+        if isfield(cfg,'f_stop') && cfg.f_stop && ~isnan(cfg.f_stop)    
+            t_ax = [-1e9; t_start; t_stop; 1e9];
+            w0_ax = 2*pi*[cfg.f_nom; cfg.f_nom; cfg.f_stop; cfg.f_stop];
+            w0 = interp1(t_ax,w0_ax,t,'linear');
         end
         
-        % remove filter padding from time vector
-        t = t(1+filter_pad_size:end-filter_pad_size) - filter_pad_time;        
+        % fundamental grid voltage component
+        A = cfg.U_rms(phid)*2^0.5;
+        
+        % generate grid voltage harmonics 
+        [f_uh, A_uh, ph_uh] = gen_thd_harms(cfg.U_thd, cfg.U_thd_mode, cfg.U_thd_harms);
+        A_uh = A*A_uh;
+        
+        % fix voltage components to match desired rms
+        ku_rms = cfg.U_rms(phid)/rms(2^-0.5*[A A_uh]);
+        A = A*ku_rms;
+        A_uh = A_uh*ku_rms;
+        
+        % list of all voltage harmonics
+        f_list = [1 f_uh];
+        A_list = [A A_uh];
+        ph_list = [0 ph_uh] + U_phi(phid)*f_list/f_list(1);    
+        
+        % generate voltage harmonics (one by one to save memory for large datasets)
+        u(:,phid) = zeros(size(t));
+        for k = 1:numel(f_list)
+            wt = w0.*f_list(k).*(t - t_start);
+            u(:,phid) = u(:,phid) + A_list(k)*sin(wt + ph_list(k));
+        end
+        clear wt;
+                                            
+        % generate supra harmonics stuff
+        if cfg.supra_enable
+            [u_supra, i_supra] = gen_supra(cfg, N_count);
+            u(:,phid) = u(:,phid) + u_supra;
+            clear u_supra;
+        end
+        
+        
+        
+        % apply voltage padding
+        u(find(t < t_start | t >= t_stop),phid) = 0.0;
+        
+        
+        
+        % make current envelope
+        t_i_start = t_start + cfg.I_U_delay;
+        t_i_end_initial = t_i_start + cfg.I_initial_time;
+        t_i_end_rampup = t_i_end_initial + cfg.I_ramp_up_time;
+        t_i_end = t_stop - cfg.I_U_end_delay;
+        t_i_end_nom = t_i_end - cfg.I_ramp_down_time;
+        t_i_steps = [0, t_i_start, t_i_start, t_i_end_initial, t_i_end_rampup, t_i_end_nom, t_i_end, t_sim];
+        i_env_steps = [0, 0, cfg.I_initial, cfg.I_initial, cfg.I_rms(phid), cfg.I_rms(phid), 0, 0]/cfg.I_rms(phid);
+        t_i_steps = t_i_steps + eps*[1:numel(t_i_steps)];
+        i_env = interp1(t_i_steps, i_env_steps, t,'linear','extrap');
+        
+        
+        
+        % main current component
+        A = cfg.I_rms(phid)*2^0.5;
+         
+        % generate current THD components
+        [f_uh, A_uh, ph_uh] = gen_thd_harms(cfg.I_thd, cfg.I_thd_mode, cfg.I_thd_harms);
+        A_uh = A*A_uh;
+        
+        % fix current components to match desired rms
+        ki_rms = cfg.I_rms(phid)/rms(2^-0.5*[A A_uh]);
+        A = A*ki_rms;
+        A_uh = A_uh*ki_rms;
+        
+        % make list of current harmonics
+        f_list = [1 f_uh];
+        A_list = [A A_uh];
+        ph_list = [0 ph_uh] + I_phi(phid)*f_list/f_list(1);
+        
+        % generate current harmonics (one by one to save memory for large datasets)
+        i(:,phid) = zeros(size(t));
+        for k = 1:numel(f_list)
+            wt = w0.*f_list(k).*(t - t_start);
+            i(:,phid) = i(:,phid) + A_list(k)*sin(wt + ph_list(k)).*i_env;
+        end
+        clear wt;
+        
+        % generate PFC spurs
+        if cfg.pfc_enable
+            ip = gen_pfc_emi(t - t_start, w0.*(t - t_start), cfg.pfc_min_f,cfg.pfc_max_f, cfg.pfc_max_h,cfg.pfc_max_h_f, A.*i_env*cfg.pfc_spur_amp_rel);
+            i(:,phid) = i(:,phid) + ip;
+        end    
+        clear i_env;
+        
+        if exist('i_supra','var')
+            % add supra-harmonics
+            i_supra(t < t_start | t >= t_stop) = 0.0;
+            i(:,phid) = i(:,phid) + i_supra;
+        end
+        
             
+        % return unmodified waveforms
+        u_raw(:,phid) = u(1+filter_pad_size:end-filter_pad_size,phid);
+        i_raw(:,phid) = i(1+filter_pad_size:end-filter_pad_size,phid);
+        
+        % calculate actual simulated energy dose [Ws]
+        p = u_raw(:,phid).*i_raw(:,phid);
+        t_slice = cfg.slice_N_count*Ts;
+        E_sim(phid) = mean(p)*t_slice;    
+        clear p;            
+       
+    
+        
+        
+        % --- Apply ADC and transducer models:
+        if cfg.adc_enable || cfg.tr_enable
+               
+            % define channels to process 
+            channels{1}.y = u(:,phid); % input
+            channels{1}.y_var = 'u_filt(:,phid)'; % output variable
+            channels{1}.adc_tfer = cfg.u_adc; % adc model
+            channels{1}.tr_tfer = cfg.u_tr; % transducer model
+            channels{2}.y = i(:,phid); % input
+            channels{2}.y_var = 'i_filt(:,phid)'; % output variable
+            channels{2}.adc_tfer = cfg.i_adc; % adc model
+            channels{2}.tr_tfer = cfg.i_tr; % transducer model
+            
+            % for each channel:
+            for k = 1:numel(channels)
+                chn = channels{k};
+            
+                % get combined frequency vector of ADC and transducer correction
+                tf_freq = [];
+                if cfg.adc_enable
+                    tf_freq = chn.adc_tfer.f(:);
+                end
+                if cfg.tr_enable
+                    tf_freq = [tf_freq;chn.tr_tfer.f(:)];
+                end
+                tf_freq = unique(sort(tf_freq));
+                if min(tf_freq) > 0 || max(tf_freq) < fs/2
+                    error('Frequency vector of ADC and transducer transfers must cover frequency range from 0 to nyquist (cfg.fs/2)!');
+                end
+                
+                % combine ADC and transducer transfers:
+                %   note: optional randomization of tfers assuming correlated uncertainty along frequency axis            
+                
+                % ADC transfer
+                tf_gain = ones(size(tf_freq));
+                tf_phi = zeros(size(tf_freq));
+                if cfg.adc_enable
+                    freq = chn.adc_tfer.f(:);
+                    gain = chn.adc_tfer.gain.v(:) + cfg.rand_model*randn()*chn.adc_tfer.gain.u(:);    
+                    phi = chn.adc_tfer.phi.v(:) + cfg.rand_model*randn()*chn.adc_tfer.phi.u(:);            
+                    tf_gain = interp1(freq, gain, tf_freq, cfg.tfer_interp, 'extrap');
+                    tf_phi = interp1(freq, phi, tf_freq, cfg.tfer_interp, 'extrap');
+                end
+                
+                % transducer transfer
+                if cfg.tr_enable
+                    freq = chn.tr_tfer.f(:);
+                    gain = chn.tr_tfer.gain.v(:) + cfg.rand_model*randn()*chn.tr_tfer.gain.u(:);    
+                    phi = chn.tr_tfer.phi.v(:) + cfg.rand_model*randn()*chn.tr_tfer.phi.u(:);            
+                    gain = interp1(freq, gain, tf_freq, cfg.tfer_interp, 'extrap');
+                    phi = interp1(freq, phi, tf_freq, cfg.tfer_interp, 'extrap');
+                    tf_gain = tf_gain.*gain;
+                    tf_phi = tf_phi + phi;
+                end
+                
+                % apply filter
+                [y_filt, id_start, id_stop] = td_fft_filter(chn.y, cfg.fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
+                            
+                % get rid of padding residue
+                eval([chn.y_var ' = y_filt((filter_pad_size - id_start + 1):(filter_pad_size - id_start + cfg.slice_N_count));']);                      
+                    
+                clear y_filt;
+            
+            end % for u/i channels
+            
+        end % adc/transducer transfer model enabled
+    
+    end % for each phase
+    
+    if cfg.adc_enable || cfg.tr_enable
+        % remove filter padding from time vector
+        t = t(1+filter_pad_size:end-filter_pad_size) - filter_pad_time;
+        u = u_filt;
+        i = i_filt;
     end 
     
     
     % show some debug plots?
     if strcmp(cfg.dbg_plot,'plotyy')
+        leg = {};
+        for phid = 1:cfg.phase_N
+            leg{end+1} = sprintf('U(L%d)',phid);            
+        end
+        for phid = 1:cfg.phase_N
+            leg{end+1} = sprintf('I(L%d)',phid);            
+        end
+        
         figure;
         [hax] = plotyy(t,u_raw, t,i_raw);
         xlabel(hax(1), 'time [s]');
@@ -468,14 +511,22 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
         ylabel(hax(2), 'i [A]');
         grid on;
         box on;
+        legend(leg);
+        
     
     elseif strcmp(cfg.dbg_plot,'plot')
+        leg = {};
+        for phid = 1:cfg.phase_N
+            leg{phid} = sprintf('L%d',phid);            
+        end
+        
         figure;
         plot(t, u_raw);
         xlabel('time [s]');
         ylabel('u [V]');
         grid on;
         box on;
+        legend(leg);
         
         figure;
         plot(t, i_raw);
@@ -483,8 +534,14 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
         ylabel('i [A]');
         grid on;
         box on;
+        legend(leg);
         
     elseif strcmp(cfg.dbg_plot,'subplot')
+        leg = {};
+        for phid = 1:cfg.phase_N
+            leg{phid} = sprintf('L%d',phid);            
+        end
+        
         figure;
         subplot(2,1,1);
         plot(t, u_raw);
@@ -492,13 +549,15 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
         ylabel('u [V]');
         grid on;
         box on;
+        legend(leg);
         
         subplot(2,1,2);        
         plot(t, i_raw);
         xlabel('time [s]');
         ylabel('i [A]');
         grid on;
-        box on;        
+        box on;
+        legend(leg);        
     
     end 
           

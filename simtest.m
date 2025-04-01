@@ -33,8 +33,23 @@ slice_test_N_count = 56789;
 % show debug plots? ('': none, 'plotyy': u,i two axis plot, 'plot': u,i two separate plots, 'subplot': i,u to subplots)
 cfg.dbg_plot = '';
 
+% phase count
+cfg.phase_N = 2;
+
+% optional phase shifts of voltage for each phase (default step is 360/cfg.phase_N) [deg]
+cfg.U_phi = [0 120 240];
+
+% grid frequency [Hz]
+cfg.f_nom = 50.3;
+% set stop frequency to generate frequency drift along the simulated interval [Hz] or leave empty or set to 0 to disable
+cfg.f_stop = 49.9;
+
+% digitizer sampling rate [Hz]
+cfg.fs = 50000.0;
+
 % nominal grid voltage (rms) [V]
-cfg.U_rms = 230.0;
+%  note: scalar to set identical for all phases or vector to specify for each phase
+cfg.U_rms = [230.0];
 
 % voltage THD [%]
 cfg.U_thd_harms = 10;
@@ -42,12 +57,18 @@ cfg.U_thd = 15.0;
 cfg.U_thd_mode = 'sqr';
 
 % nominal current (rms) [A]
+%  note: scalar to set identical for all phases or vector to specify for each phase
 cfg.I_rms = 45.0;
 
 % current THD [%]
 cfg.I_thd_harms = 10;
 cfg.I_thd = 10.0;
 cfg.I_thd_mode = 'exp';
+
+% steady state power factor [-]
+cfg.pf = 0.95;
+% or alternatively current phase shift [deg]
+%cfg.I_phi = 0;
 
 % PFC spurs simulator
 cfg.pfc_enable = 0;
@@ -115,26 +136,12 @@ end
 
 
 
-% steady state power factor [-]
-cfg.pf = 0.95;
-% or alternatively current phase shift [deg]
-%cfg.I_phi = 0;
-
-% grid frequency [Hz]
-cfg.f_nom = 50.3;
-% set stop frequency to generate frequency drift along the simulated interval [Hz] or leave empty or set to 0 to disable
-cfg.f_stop = 49.9;
-
-% digitizer sampling rate [Hz]
-cfg.fs = 200000.0;
-
-
 
 
 % enable ADC simulation
-cfg.adc_enable = 0;
+cfg.adc_enable = 1;
 % enable transducer simulation
-cfg.tr_enable = 0;
+cfg.tr_enable = 1;
 
 % ADC and transducer model randomization by its uncertainty?
 cfg.rand_model = 0;
@@ -233,7 +240,7 @@ if ~strcmpi(test_mode,'single')
         cfg.slice_N_count = M;
         
         % generate slice
-        [tx,ux,ix,E_ref_slice(end+1)] = sim_evcs(cfg);
+        [tx,ux,ix,E_ref_slice(end+1,:)] = sim_evcs(cfg);
                 
         % merge slices
         t_slice = [t_slice; tx];
@@ -243,7 +250,7 @@ if ~strcmpi(test_mode,'single')
         % next slice
         n = n + M;
     end
-    E_ref_slice = sum(E_ref_slice);
+    E_ref_slice = sum(E_ref_slice,1);
     cfg.dbg_plot = dbg_plot;
     toc
     
@@ -264,6 +271,14 @@ if ~strcmpi(test_mode,'single')
                 
         % plot wave differences
         if strcmp(cfg.dbg_plot,'plotyy')
+            leg = {};
+            for phid = 1:cfg.phase_N
+                leg{end+1} = sprintf('U(L%d)',phid);            
+            end
+            for phid = 1:cfg.phase_N
+                leg{end+1} = sprintf('I(L%d)',phid);            
+            end
+            
             figure;
             [hax] = plotyy(t,u - u_slice, t,i - i_slice);
             xlabel(hax(1), 'time [s]');
@@ -271,14 +286,21 @@ if ~strcmpi(test_mode,'single')
             ylabel(hax(2), 'i - i\_slice [A]');
             grid on;
             box on;
+            legend(leg);
         
         elseif strcmp(cfg.dbg_plot,'plot')
+            leg = {};
+            for phid = 1:cfg.phase_N
+                leg{phid} = sprintf('L%d',phid);            
+            end
+            
             figure;
             plot(t, u - u_slice);
             xlabel('time [s]');
             ylabel('u - u\_slice [V]');
             grid on;
             box on;
+            legend(leg);
             
             figure;
             plot(t, i - i_slice);
@@ -286,8 +308,14 @@ if ~strcmpi(test_mode,'single')
             ylabel('i - i\_slice [A]');
             grid on;
             box on;
+            legend(leg);
             
         elseif strcmp(cfg.dbg_plot,'subplot')
+            leg = {};
+            for phid = 1:cfg.phase_N
+                leg{phid} = sprintf('L%d',phid);            
+            end
+        
             figure;
             subplot(2,1,1);
             plot(t, u - u_slice);
@@ -295,13 +323,15 @@ if ~strcmpi(test_mode,'single')
             ylabel('u - u\_slice [V]');
             grid on;
             box on;
+            legend(leg);
             
             subplot(2,1,2);        
             plot(t, i - i_slice);
             xlabel('time [s]');
             ylabel('i - i\_slice [A]');
             grid on;
-            box on;        
+            box on;
+            legend(leg);        
         
         end
     end
@@ -323,12 +353,22 @@ toc
 % print results
 E_ref = E_ref/3600;
 E_meas = E_meas/3600;
-[~,str,fmt,sip,si_scale] = num_fmt(E_ref, 1e-6, 1e-6, 10, 100);
-fmt = [fmt ' ' sip 'Wh'];
-fprintf(['E_ref  = ' fmt '\n'],E_ref*si_scale);
-fprintf(['E_meas = ' fmt '\n'],E_meas*si_scale);
-fprintf(['E_dev  = ' fmt '\n'],(E_meas - E_ref)*si_scale);
-rel_dev = E_ref/E_meas - 1
+E_ref_sum = sum(E_ref);
+E_meas_sum = sum(E_meas);
+[~,str,fmt,sip,si_scale] = num_fmt(max(E_ref), 1e-6, 1e-6, 10, 100);
+fmt = [fmt ' ' sip 'Wh '];
+fprintf(['E_ref  = [%s]\n'],sprintf(fmt, E_ref*si_scale));
+fprintf(['E_meas = [%s]\n'],sprintf(fmt, E_meas*si_scale));
+fprintf(['E_dev  = [%s]\n'],sprintf(fmt, (E_meas - E_ref)*si_scale));
+
+if cfg.phase_N > 1
+    [~,str,fmt,sip,si_scale] = num_fmt(max(E_ref_sum), 1e-6, 1e-6, 10, 100);
+    fmt = [fmt ' ' sip 'Wh '];
+    fprintf(['E_ref_sum  = %s\n'],sprintf(fmt, E_ref_sum*si_scale));
+    fprintf(['E_meas_sum = %s\n'],sprintf(fmt, E_meas_sum*si_scale));
+    fprintf(['E_dev_sum  = %s\n'],sprintf(fmt, (E_meas_sum - E_ref_sum)*si_scale));
+end
+rel_dev = E_ref_sum/E_meas_sum - 1
 
 
 % figure

@@ -77,49 +77,56 @@ function [E] = calc_energy(t,u,i,cfg)
     filter_pad = cfg.filter_size;
     pad = zeros(filter_pad,1);
     
-    if cfg.adc_enable
-        
-        % voltage ADC transfer 
-        tf_freq = cfg.u_adc.f;
-        tf_gain = 1./cfg.u_adc.gain.v;
-        tf_phi = -cfg.u_adc.phi.v;
-        y_pad = [pad;u;pad];
-        [u, id_start, id_stop] = td_fft_filter(y_pad, fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
-        u = u((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));            
-        
-        % current ADC transfer 
-        tf_freq = cfg.i_adc.f;
-        tf_gain = 1./cfg.i_adc.gain.v;
-        tf_phi = -cfg.i_adc.phi.v;
-        y_pad = [pad;i;pad];
-        [i, id_start, id_stop] = td_fft_filter(y_pad, fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
-        i = i((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));
-        
-    end      
+    % --- for each phase:
+    for phid = 1:cfg.phase_N
     
-    if cfg.tr_enable
+        if cfg.adc_enable
+            
+            % voltage ADC transfer 
+            tf_freq = cfg.u_adc.f;
+            tf_gain = 1./cfg.u_adc.gain.v;
+            tf_phi = -cfg.u_adc.phi.v;
+            y_pad = [pad;u(:,phid);pad];
+            [u_filt, id_start, id_stop] = td_fft_filter(y_pad, fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
+            u(:,phid) = u_filt((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));            
+            
+            % current ADC transfer 
+            tf_freq = cfg.i_adc.f;
+            tf_gain = 1./cfg.i_adc.gain.v;
+            tf_phi = -cfg.i_adc.phi.v;
+            y_pad = [pad;i(:,phid);pad];
+            [i_filt, id_start, id_stop] = td_fft_filter(y_pad, fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
+            i(:,phid) = i_filt((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));
+            
+        end      
         
-        % voltage transducer transfer 
-        tf_freq = cfg.u_tr.f;
-        tf_gain = 1./cfg.u_tr.gain.v;
-        tf_phi = -cfg.u_tr.phi.v;
-        y_pad = [pad;u;pad];
-        [u, id_start, id_stop] = td_fft_filter(y_pad, fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
-        u = u((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));            
+        if cfg.tr_enable
+            
+            % voltage transducer transfer 
+            tf_freq = cfg.u_tr.f;
+            tf_gain = 1./cfg.u_tr.gain.v;
+            tf_phi = -cfg.u_tr.phi.v;
+            y_pad = [pad;u(:,phid);pad];
+            [u_filt, id_start, id_stop] = td_fft_filter(y_pad, fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
+            u(:,phid) = u_filt((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));            
+            
+            % current transducer transfer 
+            tf_freq = cfg.i_tr.f;
+            tf_gain = 1./cfg.i_tr.gain.v;
+            tf_phi = -cfg.i_tr.phi.v;
+            y_pad = [pad;i(:,phid);pad];
+            [i_filt, id_start, id_stop] = td_fft_filter(y_pad, fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
+            i(:,phid) = i_filt((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));
+            
+        end
         
-        % current transducer transfer 
-        tf_freq = cfg.i_tr.f;
-        tf_gain = 1./cfg.i_tr.gain.v;
-        tf_phi = -cfg.i_tr.phi.v;
-        y_pad = [pad;i;pad];
-        [i, id_start, id_stop] = td_fft_filter(y_pad, fs, cfg.filter_size, tf_freq, tf_gain, tf_phi);
-        i = i((filter_pad - id_start + 1):(filter_pad - id_start + numel(t)));
+        % calculate actual simulated energy dose [Ws]
+        p = u(:,phid).*i(:,phid);
+        E(phid) = mean(p)*t_meas;
         
+        clear p;
+    
     end
-    
-    % calculate actual simulated energy dose [Ws]
-    p = u.*i;
-    E = mean(p)*t_meas;
 
 end
 
