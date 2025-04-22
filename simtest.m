@@ -1,5 +1,6 @@
 %====================================================================================================
-% This script simulates EV AC charging waveform with defined parameters (power, energy, ...) 
+% This is demo script for function sim_evcs() that simulates EV AC charging waveform 
+% with defined parameters (power, energy, ...) 
 %
 % This is part of the EVCS charging waveform simulator.
 % Developed in scope of EPM project 23IND06 Met4EVCS: https://www.vsl.nl/en/met4evcs/
@@ -101,7 +102,7 @@ cfg.pad_post = 0.1;
 
 % --- supra hamonics stuff:
 % state
-cfg.supra_enable = 0;
+cfg.supra_enable = 1;
 % lower freq limit [Hz]
 cfg.supra_fmin = 1.5e3;
 % upper freq limit [Hz]
@@ -114,10 +115,12 @@ cfg.supra_slice_t = 0.1;
 cfg.supra_multi_spur = 10;
 % voltage emisions model path 
 cfg.supra_model = fullfile(mpth, 'data', 'EV2_H2-Syn_model.mat');
-% grid impedance estimate (for calculation of current spectrum): (Rs + Ls) || Cp  
-cfg.supra_imp_Rs = 0.1;
-cfg.supra_imp_Ls = 1e-6;
-cfg.supra_imp_Cp = 1e-6;
+% grid impedance model (for calculation of current spectrum)
+cfg.supra_imp_model = fullfile(mpth, 'data', 'Z_Grid_Urban_50th_percentile_RBW-1Hz_model.mat');
+% alternative grid impedance estimate if no model file provided (for calculation of current spectrum): (Rs + Ls) || Cp  
+%cfg.supra_imp_Rs = 0.1;
+%cfg.supra_imp_Ls = 1e-6;
+%cfg.supra_imp_Cp = 1e-6;
 
 
 
