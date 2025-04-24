@@ -1,11 +1,11 @@
-function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
+function [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
 % This script simulates EV AC charging waveforms with defined parameters (U, I, PF, ...)
 % Returns simulated waveforms and calculated active energy. 
 % It can also apply frequency dependent gain-phase model of ADC and transducers and return modified waveforms.
 % Frequency dependent corrections are performed using FFT filtering. 
 %
 % Usage:
-%   [t,u,i,E,u_raw,i_raw] = sim_evcs(cfg)
+%   [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
 %
 % Parameters:
 %   cfg.dbg_plot - optional, show debug plot? {'': no, 'plotyy' two axis mode, 'plot': two plots, 'subplot': subplots}
@@ -88,6 +88,7 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
 %   cfg.u - voltage waveform [V]
 %   cfg.i - current waveform [A]
 %   cfg.E_sim - active energy of simulated u/i waveforms [Ws]
+%   cfg.P_sim - active power of simulated u/i waveforms [Ws]
 %   cfg.u_raw - raw voltage waveform before applying system model [V] 
 %   cfg.i_raw - raw current waveform before applying system model [A]
 %
@@ -417,7 +418,8 @@ function [t,u,i,E_sim,u_raw,i_raw] = sim_evcs(cfg)
         % calculate actual simulated energy dose [Ws]
         p = u_raw(:,phid).*i_raw(:,phid);
         t_slice = cfg.slice_N_count*Ts;
-        E_sim(phid) = mean(p)*t_slice;    
+        P_sim(phid) = mean(p);
+        E_sim(phid) = P_sim(phid)*t_slice;    
         clear p;            
        
     

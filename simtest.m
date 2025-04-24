@@ -27,7 +27,7 @@ end
 %  'slice' - generate waves from sub-slices of defined length
 %  'both' - generate using both methods and compare difference (just for debuf purposes)
 test_mode = 'single';
-% slice length in samples count
+% slice length in samples count (for slice mode only)
 slice_test_N_count = 56789;
 
 
@@ -79,7 +79,7 @@ cfg.pfc_min_f = 2e3;
 cfg.pfc_max_f = 8e3;
 cfg.pfc_spur_amp_rel = 0.01;
 
-% initial current time [s]
+% initial current time interval [s]
 cfg.I_initial_time = 0.1;
 % initial current (rms) [A]
 cfg.I_initial = 1.0;
@@ -100,7 +100,7 @@ cfg.pad_enable = 1;
 cfg.pad_init = 0.1;
 cfg.pad_post = 0.1;
 
-% --- supra hamonics stuff:
+% --- supra harmonics stuff:
 % state
 cfg.supra_enable = 1;
 % lower freq limit [Hz]
