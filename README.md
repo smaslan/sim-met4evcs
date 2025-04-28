@@ -1,4 +1,4 @@
-# Simulator of EV charger input waveform for EPM project 23IND06 Met4EVCS
+# Simulator of EV charger input waveforms for EPM project 23IND06 Met4EVCS
 
 This project is generator of multiphase voltage and current waveforms simulating grid to EV charger AC inputs. It is part of European [EPM](https://www.metpart.eu) project [23IND06 Met4EVCS](https://www.vsl.nl/en/met4evcs/).
 Intention of this simulator is to generate waveforms carrying known energy that can be used to numerically verify function of power/energy metering algorithms under conditions close to real measurements.
@@ -6,6 +6,7 @@ It can generate multiphase waveforms with defined voltage, current, PF, harmonic
 metering algorithms corrections. It can also randomize the model which can be used to evaluate uncertainty using Monte Carlo method.
 
 It is developed for environments [GNU Octave](https://octave.org) and [Matlab](https://www.mathworks.com/products/matlab.html). It should work in both.
+
 For more details see main function `sim_evcs.m` or demo `simtest.m`.
 
 <img src="./figs/fig_waves_1.png">
