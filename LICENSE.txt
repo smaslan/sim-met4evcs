@@ -4,6 +4,7 @@ Copyright (c) 2024-2025 CMI, Stanislav Maslan
 
 The lincese is relevant to the evcs waveform simulator developed in scope
 of EPM project 23IND06 Met4EVCS: https://www.vsl.nl/en/met4evcs/
+Source available: https://github.com/smaslan/sim-met4evcs
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
