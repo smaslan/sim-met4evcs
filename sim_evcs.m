@@ -284,8 +284,8 @@ function [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
         % not allowed
         error('Define either ''slice_t_duration'' or ''slice_N_count'' or none, not both!');    
     elseif (~isfield(cfg, 'slice_t_duration') && ~isfield(cfg, 'slice_N_count')) ... 
-            || (isfield(cfg, 'slice_t_duration') && (cfg.slice_t_duration == NaN || cfg.slice_t_duration <= 0)) ... 
-            || (isfield(cfg, 'slice_N_count') && (cfg.slice_N_count == NaN || cfg.slice_N_count <= 0))
+            || (isfield(cfg, 'slice_t_duration') && (isnan(cfg.slice_t_duration) || cfg.slice_t_duration <= 0)) ... 
+            || (isfield(cfg, 'slice_N_count') && (isnan(cfg.slice_N_count) || cfg.slice_N_count <= 0))
         % none defined: slice till end of simulation
         cfg.slice_N_count = N - cfg.slice_N_start;
     elseif isfield(cfg, 'slice_t_duration')
@@ -301,7 +301,7 @@ function [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
     end      
     
     % total filters to be applied
-    has_filters = !!cfg.tr_enable + !!cfg.adc_enable;
+    has_filters = ~~cfg.tr_enable + ~~cfg.adc_enable;
     
     if has_filters
         % expand simulation range to cover extra padding needed for the FFT filters
@@ -332,6 +332,8 @@ function [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
     
     
     % --- For each phase:
+    u = zeros([numel(t) cfg.phase_N]);
+    i = zeros([numel(t) cfg.phase_N]);
     for phid = 1:cfg.phase_N
     
         % generate fund. frequency vector along simulated interval
@@ -377,7 +379,7 @@ function [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
         
         
         % apply voltage padding
-        u(find(t < t_start | t >= t_stop),phid) = 0.0;
+        u(t < t_start | t >= t_stop,phid) = 0.0;
         
         
         

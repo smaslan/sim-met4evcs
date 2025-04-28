@@ -103,7 +103,7 @@ cfg.pad_post = 0.1;
 
 % --- supra harmonics stuff:
 % state
-cfg.supra_enable = 1;
+cfg.supra_enable = 0;
 % lower freq limit [Hz]
 cfg.supra_fmin = 1.5e3;
 % upper freq limit [Hz]
