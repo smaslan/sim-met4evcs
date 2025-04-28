@@ -6,6 +6,7 @@ function [ip] = gen_pfc_emi(t, phi, f_min, f_max, fh_count, fh_max_f, amp)
 %
 % This is part of the EVCS charging waveform simulator.
 % Developed in scope of EPM project 23IND06 Met4EVCS: https://www.vsl.nl/en/met4evcs/
+% Source: https://github.com/smaslan/sim-met4evcs
 % (c) 2024, Stanislav Maslan (smaslan@cmi.cz)
 % The script is distributed under MIT license, https://opensource.org/licenses/MIT.
 

@@ -18,6 +18,7 @@ function [fx_rel, hx_rel, phx] = gen_thd_harms(thd, shape, max_n)
 %
 % This is part of the EVCS charging waveform simulator.
 % Developed in scope of EPM project 23IND06 Met4EVCS: https://www.vsl.nl/en/met4evcs/
+% Source: https://github.com/smaslan/sim-met4evcs
 % (c) 2024, Stanislav Maslan (smaslan@cmi.cz)
 % The script is distributed under MIT license, https://opensource.org/licenses/MIT.    
 

@@ -30,6 +30,7 @@ function [f,qu_gain,qu_phi] = gen_rvd_tfer(f_max,f_count, cfg, varargin)
 %
 % This is part of the EVCS charging waveform simulator.
 % Developed in scope of EPM project 23IND06 Met4EVCS: https://www.vsl.nl/en/met4evcs/
+% Source: https://github.com/smaslan/sim-met4evcs
 % (c) 2024, Stanislav Maslan (smaslan@cmi.cz)
 % The script is distributed under MIT license, https://opensource.org/licenses/MIT.
 

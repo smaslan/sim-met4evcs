@@ -1,7 +1,7 @@
 function [E] = calc_energy(t,u,i,cfg)
-% Simple algorithm for measuring energy of waveform.
+% Simple algorithm for measuring energy of u,i waveforms using integration method.
 % Also applies ADC and transducer corrections.
-% Note: it is just simple testing algorithm for sim_evcs() testing.
+% Note: it is just simple algorithm for sim_evcs() testing. Not intended for calculations on real waveforms.
 %
 % Usage:
 %   [E] = calc_energy(t,u,i,cfg)
@@ -35,6 +35,7 @@ function [E] = calc_energy(t,u,i,cfg)
 %
 % This is part of the EVCS charging waveform simulator.
 % Developed in scope of EPM project 23IND06 Met4EVCS: https://www.vsl.nl/en/met4evcs/
+% Source: https://github.com/smaslan/sim-met4evcs
 % (c) 2024, Stanislav Maslan (smaslan@cmi.cz)
 % The script is distributed under MIT license, https://opensource.org/licenses/MIT.
 %

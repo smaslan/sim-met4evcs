@@ -1,8 +1,23 @@
 function [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
-% This script simulates EV AC charging waveforms with defined parameters (U, I, PF, ...)
-% Returns simulated waveforms and calculated active energy. 
+% This script simulates EV AC charging waveforms with defined parameters (U, I, PF, spurs, ...)
+% Returns simulated waveforms and calculated reference active energy and mean power.
+% It is intended to numerically verify function of power/energy measuring algorithms by providing waveforms
+% having known parameters.
+%
+% It can generate multiphase waveforms with defined U, I, PF, harmonics, spurs, etc.
+% Frequency can be constant or varying.
+% It can also add spurs simulating PFC circuit harmonics and eventually supraharmonics based on real
+% measurements.
+% Voltage and current waveforms can have ramp up/down portions in defined times.
+% To save memory, the simulator can return waveforms per selected time slices.  
+%
 % It can also apply frequency dependent gain-phase model of ADC and transducers and return modified waveforms.
-% Frequency dependent corrections are performed using FFT filtering. 
+% Frequency dependent corrections are performed using FFT filtering with running window.
+% This is useful for simulating errors of transducers which should be corrected by measurement algorithm.
+% It can also randomize the gain-phase corrections by their assigned uncertainty, which is useful
+% to evaluate uncertainty of measurement using Monte Carlo method.
+%
+% For more details see parameters description and eventually demo simtest.m.
 %
 % Usage:
 %   [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
@@ -56,6 +71,12 @@ function [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
 %   cfg.U_I_delay - optional, extra delay between voltage start and initial current [s]
 %   cfg.I_ramp_down_time - optional, ramp-down time [s]
 %   cfg.I_U_end_delay - optional, extra delay between current end and voltage end [s]
+%  Optional time slice (or sample count slice) of the total simulation time (do not assign to simulate full wave at once):
+%   note: use either time values or sample count values, not both and not combination of time and samples count
+%   cfg.slice_t_start - start of slice [s]
+%   cfg.slice_t_duration - duration of slice [s]
+%   cfg.slice_N_start - first slice sample offset (0-based: 0-start from first sample)  
+%   cfg.slice_N_count - samples count for the slice
 %  System model related stuff:
 %   cfg.filter_size - optional, FFT filter mask resolution used for the frequency dependent gain, phase corrections
 %                     must be 2^x size
@@ -88,12 +109,13 @@ function [t,u,i,E_sim,P_sim,u_raw,i_raw] = sim_evcs(cfg)
 %   cfg.u - voltage waveform [V]
 %   cfg.i - current waveform [A]
 %   cfg.E_sim - active energy of simulated u/i waveforms [Ws]
-%   cfg.P_sim - active power of simulated u/i waveforms [Ws]
+%   cfg.P_sim - active power of simulated u/i waveforms [W]
 %   cfg.u_raw - raw voltage waveform before applying system model [V] 
 %   cfg.i_raw - raw current waveform before applying system model [A]
 %
 % This is part of the EVCS charging waveform simulator.
 % Developed in scope of EPM project 23IND06 Met4EVCS: https://www.vsl.nl/en/met4evcs/
+% Source: https://github.com/smaslan/sim-met4evcs
 % (c) 2025, Stanislav Maslan (smaslan@cmi.cz)
 % The script is distributed under MIT license, https://opensource.org/licenses/MIT.
 %
